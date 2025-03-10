@@ -1,58 +1,75 @@
 #include <iostream>
-#include <cstdlib>
+#include <string>
+#include <vector>
 #include <ctime>
-
+#include <cstdlib>
 using namespace std;
 
-int generateRandomNumber() {
-    return rand() % 100 + 1;
-}
-
-int getPlayerGuess() {
-    int guess;
-    cout << "Enter your guess: ";
-    cin >> guess;
-    return guess;
-}
-
-void printHealthBar(int health) {
-    cout << "Health: [";
-    for (int i = 0; i < health; i++) cout << "#";
-    for (int i = health; i < 10; i++) cout << "-";
-    cout << "] (" << health * 10 << "%)\n";
-}
-
-void printAnswer(int guess, int randomNumber, int &health) {
-    if (guess > randomNumber) {
-        cout << "Too high! Try again.\n";
-        health--;
-    } else if (guess < randomNumber) {
-        cout << "Too low! Try again.\n";
-        health--;
-    } else {
-        cout << "Congratulations! You guessed it!\n";
+string getRandomWord() {
+    string letters = "abcdefghijklmnopqrstuvwxyz";
+    string word = "";
+    srand(time(0));
+    for (int i = 0; i < 10; i++) {
+        word += letters[rand() % letters.size()];
     }
-    printHealthBar(health);
+    return word;
+}
+void displayWord(const string& word, const vector<bool>& guessed) {
+    for (size_t i = 0; i < word.length(); i++) {
+        if (guessed[i]) cout << word[i] << " ";
+        else cout << "_ ";
+    }
+    cout << endl;
 }
 
 int main() {
-    srand(time(0));
-    int randomNumber = generateRandomNumber();
-    int number;
-    int health = 10;
-
-    cout << "Welcome to the Guessing Game!\n";
-    printHealthBar(health);
-
-    do {
-        number = getPlayerGuess();
-        printAnswer(number, randomNumber, health);
-        if (health == 0) {
-            cout << "Game Over! The correct number was: " << randomNumber << "\n";
+    string word = getRandomWord();
+    vector<bool> guessed(word.length(), false);
+    int lives = 10;
+    bool won = false;
+    
+    cout << "Chao mung den voi tro choi doan chu!\n";
+    
+    while (lives > 0) {
+        cout << "\nSo mang con lai: " << lives << endl;
+        displayWord(word, guessed);
+        
+        cout << "Nhap mot chu cai: ";
+        char guess;
+        cin >> guess;
+        
+        bool correct = false;
+        for (size_t i = 0; i < word.length(); i++) {
+            if (word[i] == guess && !guessed[i]) {
+                guessed[i] = true;
+                correct = true;
+            }
+        }
+        
+        if (!correct) {
+            lives--;
+            cout << "Sai! Ban mat mot mang.\n";
+        } else {
+            cout << "Dung! Chu cai nay co trong tu.\n";
+        }
+        
+        won = true;
+        for (bool g : guessed) {
+            if (!g) {
+                won = false;
+                break;
+            }
+        }
+        
+        if (won) {
+            cout << "\nChuc mung! Ban da doan dung tu: " << word << "\n";
             break;
         }
-    } while (number != randomNumber);
-
+    }
+    
+    if (!won) {
+        cout << "\nBan da thua! Tu dung la: " << word << "\n";
+    }
+    
     return 0;
 }
-
