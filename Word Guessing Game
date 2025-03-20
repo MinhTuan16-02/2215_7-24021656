@@ -1,8 +1,9 @@
 #include <iostream>
-#include <string>
 #include <vector>
+#include <string>
 #include <ctime>
 #include <cstdlib>
+
 using namespace std;
 
 string getRandomWord() {
@@ -14,7 +15,8 @@ string getRandomWord() {
     }
     return word;
 }
-void displayWord(const string& word, const vector<bool>& guessed) {
+
+void drawWord(const string& word, const vector<bool>& guessed) {
     for (size_t i = 0; i < word.length(); i++) {
         if (guessed[i]) cout << word[i] << " ";
         else cout << "_ ";
@@ -22,53 +24,64 @@ void displayWord(const string& word, const vector<bool>& guessed) {
     cout << endl;
 }
 
+void drawHangman(int wrongGuesses) {
+    cout << "\n*** Hangman ***" << endl;
+    string hangman[10] = {
+        "   ***   ",
+        "    |    ",
+        "    O    ",
+        "   /|\\  ",
+        "    |    ",
+        "   / \\  ",
+        "         ",
+        "         ",
+        "         ",
+        "         "
+    };
+    for (int i = 0; i < wrongGuesses; i++) {
+        cout << hangman[i] << endl;
+    }
+}
+
 int main() {
     string word = getRandomWord();
     vector<bool> guessed(word.length(), false);
-    int lives = 10;
-    bool won = false;
+    int wrongGuesses = 0;
+    int maxHealth = 10;
+    char guess;
     
-    cout << "Chao mung den voi tro choi doan chu!\n";
-    
-    while (lives > 0) {
-        cout << "\nSo mang con lai: " << lives << endl;
-        displayWord(word, guessed);
+    while (wrongGuesses < maxHealth) {
+        drawWord(word, guessed);
+        drawHangman(wrongGuesses);
         
-        cout << "Nhap mot chu cai: ";
-        char guess;
+        cout << "Remaining health: " << maxHealth - wrongGuesses << endl;
+        cout << "Enter a letter: ";
         cin >> guess;
         
-        bool correct = false;
+        bool found = false;
         for (size_t i = 0; i < word.length(); i++) {
-            if (word[i] == guess && !guessed[i]) {
+            if (word[i] == guess) {
                 guessed[i] = true;
-                correct = true;
+                found = true;
             }
         }
+        if (!found) wrongGuesses++;
         
-        if (!correct) {
-            lives--;
-            cout << "Sai! Ban mat mot mang.\n";
-        } else {
-            cout << "Dung! Chu cai nay co trong tu.\n";
-        }
-        
-        won = true;
-        for (bool g : guessed) {
-            if (!g) {
-                won = false;
+        bool allGuessed = true;
+        for (bool v : guessed) {
+            if (!v) {
+                allGuessed = false;
                 break;
             }
         }
-        
-        if (won) {
-            cout << "\nChuc mung! Ban da doan dung tu: " << word << "\n";
+        if (allGuessed) {
+            cout << "Congratulations! You guessed the word: " << word << endl;
             break;
         }
     }
     
-    if (!won) {
-        cout << "\nBan da thua! Tu dung la: " << word << "\n";
+    if (wrongGuesses == maxHealth) {
+        cout << "Game over! The correct word was: " << word << endl;
     }
     
     return 0;
