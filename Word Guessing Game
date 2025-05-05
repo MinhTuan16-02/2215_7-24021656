@@ -1,88 +1,102 @@
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <iostream>
 #include <vector>
 #include <string>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
+#include <algorithm>
 
 using namespace std;
 
-string getRandomWord() {
-    string letters = "abcdefghijklmnopqrstuvwxyz";
-    string word = "";
-    srand(time(0));
-    for (int i = 0; i < 10; i++) {
-        word += letters[rand() % letters.size()];
-    }
-    return word;
+const int SCREEN_WIDTH = 800;
+const int SCREEN_HEIGHT = 600;
+
+void renderText(SDL_Renderer* renderer, TTF_Font* font, const string& text, int x, int y, SDL_Color color) {
+    SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_Rect dstRect = { x, y, surface->w, surface->h };
+    SDL_RenderCopy(renderer, texture, NULL, &dstRect);
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
 }
 
-void drawWord(const string& word, const vector<bool>& guessed) {
-    for (size_t i = 0; i < word.length(); i++) {
-        if (guessed[i]) cout << word[i] << " ";
-        else cout << "_ ";
-    }
-    cout << endl;
-}
+int main(int argc, char* argv[]) {
+    string word;
+    cout << "Nhap tu bi mat de may doan: ";
+    cin >> word;
+    transform(word.begin(), word.end(), word.begin(), ::tolower); // chuyển về chữ thường
 
-void drawHangman(int wrongGuesses) {
-    cout << "\n*** Hangman ***" << endl;
-    string hangman[10] = {
-        "   ***   ",
-        "    |    ",
-        "    O    ",
-        "   /|\\  ",
-        "    |    ",
-        "   / \\  ",
-        "         ",
-        "         ",
-        "         ",
-        "         "
-    };
-    for (int i = 0; i < wrongGuesses; i++) {
-        cout << hangman[i] << endl;
-    }
-}
-
-int main() {
-    string word = getRandomWord();
     vector<bool> guessed(word.length(), false);
-    int wrongGuesses = 0;
-    int maxHealth = 10;
-    char guess;
-    
-    while (wrongGuesses < maxHealth) {
-        drawWord(word, guessed);
-        drawHangman(wrongGuesses);
-        
-        cout << "Remaining health: " << maxHealth - wrongGuesses << endl;
-        cout << "Enter a letter: ";
-        cin >> guess;
-        
-        bool found = false;
-        for (size_t i = 0; i < word.length(); i++) {
-            if (word[i] == guess) {
+    vector<char> tried;
+    int lives = 10;
+    bool won = false;
+
+    SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+    SDL_Window* window = SDL_CreateWindow("May dang doan tu...", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
+    SDL_Color white = { 255, 255, 255 };
+
+    vector<char> allLetters;
+    for (char c = 'a'; c <= 'z'; ++c) allLetters.push_back(c);
+    srand(time(0));
+    random_shuffle(allLetters.begin(), allLetters.end());
+
+    size_t guessIndex = 0;
+    while (lives > 0 && !won && guessIndex < allLetters.size()) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        char guess = allLetters[guessIndex++];
+        bool correct = false;
+        for (size_t i = 0; i < word.size(); i++) {
+            if (word[i] == guess && !guessed[i]) {
                 guessed[i] = true;
-                found = true;
+                correct = true;
             }
         }
-        if (!found) wrongGuesses++;
-        
-        bool allGuessed = true;
-        for (bool v : guessed) {
-            if (!v) {
-                allGuessed = false;
-                break;
-            }
+
+        if (!correct) {
+            lives--;
         }
-        if (allGuessed) {
-            cout << "Congratulations! You guessed the word: " << word << endl;
-            break;
+        tried.push_back(guess);
+
+        // Vẽ từ hiện tại
+        string display = "";
+        for (size_t i = 0; i < word.size(); i++) {
+            display += guessed[i] ? word[i] : '_';
+            display += " ";
         }
+
+        renderText(renderer, font, "Tu: " + display, 50, 100, white);
+        renderText(renderer, font, "Mang con lai: " + to_string(lives), 50, 200, white);
+        renderText(renderer, font, "May doan: " + string(1, guess), 50, 300, white);
+
+        string triedLetters = "Da doan: ";
+        for (char c : tried) triedLetters += c;
+        renderText(renderer, font, triedLetters, 50, 400, white);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(1000);
+
+        won = all_of(guessed.begin(), guessed.end(), [](bool b) { return b; });
     }
-    
-    if (wrongGuesses == maxHealth) {
-        cout << "Game over! The correct word was: " << word << endl;
-    }
-    
+
+    SDL_Delay(2000);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    string result = won ? "May da doan dung tu: " + word : "May that bai! Tu la: " + word;
+    renderText(renderer, font, result, 50, 250, white);
+    SDL_RenderPresent(renderer);
+    SDL_Delay(3000);
+
+    // Clean up
+    TTF_CloseFont(font);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
     return 0;
 }
