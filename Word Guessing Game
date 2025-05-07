@@ -1,16 +1,16 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
 #include <iostream>
 #include <vector>
 #include <string>
-#include <cstdlib>
-#include <ctime>
 #include <algorithm>
+#include <ctime>
 
 using namespace std;
 
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
+const int MAX_LIVES = 6;
 
 void renderText(SDL_Renderer* renderer, TTF_Font* font, const string& text, int x, int y, SDL_Color color) {
     SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), color);
@@ -21,62 +21,131 @@ void renderText(SDL_Renderer* renderer, TTF_Font* font, const string& text, int 
     SDL_DestroyTexture(texture);
 }
 
+void SDL_RenderDrawCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
+    for (int w = -radius; w <= radius; ++w)
+        for (int h = -radius; h <= radius; ++h)
+            if (w * w + h * h <= radius * radius)
+                SDL_RenderDrawPoint(renderer, cx + w, cy + h);
+}
+
+void drawHangman(SDL_Renderer* renderer, int lives) {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawLine(renderer, 600, 100, 600, 400);
+    SDL_RenderDrawLine(renderer, 600, 100, 680, 100);
+    SDL_RenderDrawLine(renderer, 680, 100, 680, 150);
+
+    int parts = MAX_LIVES - lives;
+    if (parts >= 1) SDL_RenderDrawCircle(renderer, 680, 180, 30);
+    if (parts >= 2) SDL_RenderDrawLine(renderer, 680, 210, 680, 290);
+    if (parts >= 3) SDL_RenderDrawLine(renderer, 680, 230, 650, 260);
+    if (parts >= 4) SDL_RenderDrawLine(renderer, 680, 230, 710, 260);
+    if (parts >= 5) SDL_RenderDrawLine(renderer, 680, 290, 650, 330);
+    if (parts >= 6) SDL_RenderDrawLine(renderer, 680, 290, 710, 330);
+}
+
+void waitForKey(SDL_Renderer* renderer) {
+    SDL_Event e;
+    while (true) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) exit(0);
+            if (e.type == SDL_KEYDOWN) return;
+        }
+        SDL_Delay(100);
+    }
+}
+
 int main(int argc, char* argv[]) {
-    string word;
-    cout << "Nhap tu bi mat de may doan: ";
-    cin >> word;
-    transform(word.begin(), word.end(), word.begin(), ::tolower); // chuyển về chữ thường
-
-    vector<bool> guessed(word.length(), false);
-    vector<char> tried;
-    int lives = 10;
-    bool won = false;
-
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
-    SDL_Window* window = SDL_CreateWindow("May dang doan tu...", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+
+    SDL_Window* window = SDL_CreateWindow("Hangman - May Doan Tu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
-    SDL_Color white = { 255, 255, 255 };
 
-    vector<char> allLetters;
-    for (char c = 'a'; c <= 'z'; ++c) allLetters.push_back(c);
+    if (!font) {
+        cerr << "Khong mo duoc font arial.ttf\n";
+        return 1;
+    }
+
+    SDL_Color white = { 255, 255, 255 };
+    SDL_Color green = { 0, 255, 0 };
+    SDL_Color red = { 255, 0, 0 };
+
+    SDL_SetRenderDrawColor(renderer, 10, 10, 50, 255);
+    SDL_RenderClear(renderer);
+    renderText(renderer, font, "Tro choi Hangman - May Doan Tu", 180, 180, white);
+    renderText(renderer, font, "Nhan phim bat ky de bat dau...", 230, 260, white);
+    SDL_RenderPresent(renderer);
+    waitForKey(renderer);
+
+    vector<string> wordList = { "zebra", "tiger", "horse", "sheep", "goose", "eagle", "lemur", "koala", "shark", "panda" };
     srand(time(0));
-    random_shuffle(allLetters.begin(), allLetters.end());
+    string word = wordList[rand() % wordList.size()];
+
+    vector<bool> guessed(word.size(), false);
+    vector<char> tried;
+    int lives = MAX_LIVES;
+    bool won = false;
+
+    // Chuẩn bị chiến lược đoán
+    vector<pair<int, int>> guessPlan;
+    for (int i = 0; i < wordList.size(); ++i) {
+        for (int j = 0; j < wordList[i].size(); ++j) {
+            guessPlan.emplace_back(i, j);
+        }
+    }
 
     size_t guessIndex = 0;
-    while (lives > 0 && !won && guessIndex < allLetters.size()) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
 
-        char guess = allLetters[guessIndex++];
+    while (lives > 0 && !won && guessIndex < guessPlan.size()) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) return 0;
+        }
+
+        // Lấy chữ chưa thử
+        char guess;
+        do {
+            if (guessIndex >= guessPlan.size()) break;
+            int wi = guessPlan[guessIndex].first;
+            int ci = guessPlan[guessIndex].second;
+            guess = wordList[wi][ci];
+            guessIndex++;
+        } while (find(tried.begin(), tried.end(), guess) != tried.end());
+
+        // Nếu đã hết kế hoạch đoán thì dừng
+        if (find(tried.begin(), tried.end(), guess) != tried.end())
+            break;
+
         bool correct = false;
-        for (size_t i = 0; i < word.size(); i++) {
+        for (size_t i = 0; i < word.size(); ++i) {
             if (word[i] == guess && !guessed[i]) {
                 guessed[i] = true;
                 correct = true;
             }
         }
 
-        if (!correct) {
-            lives--;
-        }
+        if (!correct) lives--;
         tried.push_back(guess);
 
-        // Vẽ từ hiện tại
-        string display = "";
-        for (size_t i = 0; i < word.size(); i++) {
-            display += guessed[i] ? word[i] : '_';
-            display += " ";
+        SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+        SDL_RenderClear(renderer);
+
+        int xStart = 50;
+        for (size_t i = 0; i < word.size(); ++i) {
+            string s = guessed[i] ? string(1, word[i]) : "_";
+            SDL_Color c = guessed[i] ? green : white;
+            renderText(renderer, font, s, xStart + i * 40, 100, c);
         }
 
-        renderText(renderer, font, "Tu: " + display, 50, 100, white);
-        renderText(renderer, font, "Mang con lai: " + to_string(lives), 50, 200, white);
-        renderText(renderer, font, "May doan: " + string(1, guess), 50, 300, white);
+        renderText(renderer, font, "Mang con lai: " + to_string(lives), 50, 180, white);
+        renderText(renderer, font, "May vua doan: " + string(1, guess), 50, 240, correct ? green : red);
 
-        string triedLetters = "Da doan: ";
-        for (char c : tried) triedLetters += c;
-        renderText(renderer, font, triedLetters, 50, 400, white);
+        string triedStr = "Da doan: ";
+        for (char c : tried) triedStr += c;
+        renderText(renderer, font, triedStr, 50, 300, white);
+
+        drawHangman(renderer, lives);
 
         SDL_RenderPresent(renderer);
         SDL_Delay(1000);
@@ -84,15 +153,14 @@ int main(int argc, char* argv[]) {
         won = all_of(guessed.begin(), guessed.end(), [](bool b) { return b; });
     }
 
-    SDL_Delay(2000);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 30, 255);
     SDL_RenderClear(renderer);
     string result = won ? "May da doan dung tu: " + word : "May that bai! Tu la: " + word;
-    renderText(renderer, font, result, 50, 250, white);
+    renderText(renderer, font, result, 100, 250, won ? green : red);
+    renderText(renderer, font, "Nhan phim bat ky de thoat...", 200, 320, white);
     SDL_RenderPresent(renderer);
-    SDL_Delay(3000);
+    waitForKey(renderer);
 
-    // Clean up
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
