@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <map>
 #include <ctime>
 
 using namespace std;
@@ -58,7 +59,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
-    SDL_Window* window = SDL_CreateWindow("Hangman - May Doan Tu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+    SDL_Window* window = SDL_CreateWindow("Hangman - AI Guess", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
 
@@ -73,53 +74,60 @@ int main(int argc, char* argv[]) {
 
     SDL_SetRenderDrawColor(renderer, 10, 10, 50, 255);
     SDL_RenderClear(renderer);
-    renderText(renderer, font, "Tro choi Hangman - May Doan Tu", 180, 180, white);
-    renderText(renderer, font, "Nhan phim bat ky de bat dau...", 230, 260, white);
+    renderText(renderer, font, "AI Hangman - Nhan phim de bat dau", 180, 180, white);
     SDL_RenderPresent(renderer);
     waitForKey(renderer);
 
-    vector<string> wordList = { "zebra", "tiger", "horse", "sheep", "goose", "eagle", "lemur", "koala", "shark", "panda" };
+    vector<string> wordList = {
+        "apple", "brave", "chair", "dance", "eagle", "flame", "ghost", "horse", "ideal", "joker",
+        "knife", "laugh", "magic", "night", "ocean", "piano", "queen", "river", "smile", "table",
+        "under", "voice", "watch", "xylol", "youth", "zebra", "angel", "beach", "cloud", "dream",
+        "earth", "fairy", "giant", "heart", "index", "jewel", "koala", "lemon", "mango", "nurse",
+        "orbit", "peace", "quiet", "robot", "shark", "trust", "union", "vivid", "world", "yeast",
+        "zesty", "aroma", "blend", "crush", "drill", "enjoy", "frost", "glide", "haste", "input",
+        "jolly", "kneel", "lobby", "minor", "noble", "plant", "quest", "relay", "stone", "trick",
+        "unity", "visit", "widen", "xenon", "yield", "zoney", "adapt", "blink", "chant", "daisy",
+        "elite", "flush", "grime", "haunt", "icyed", "joint", "knead", "layer", "motto", "nifty",
+        "opine", "plank", "query", "rouge", "swell", "tonic", "unzip", "value", "wrack"
+    };
+
     srand(time(0));
     string word = wordList[rand() % wordList.size()];
-
     vector<bool> guessed(word.size(), false);
     vector<char> tried;
     int lives = MAX_LIVES;
     bool won = false;
 
-    // Chuẩn bị chiến lược đoán
-    vector<pair<int, int>> guessPlan;
-    for (int i = 0; i < wordList.size(); ++i) {
-        for (int j = 0; j < wordList[i].size(); ++j) {
-            guessPlan.emplace_back(i, j);
+    while (lives > 0 && !won) {
+        map<char, int> freq;
+        for (const string& w : wordList) {
+            if (w.size() != word.size()) continue;
+            bool match = true;
+            for (size_t i = 0; i < word.size(); ++i) {
+                if (guessed[i] && w[i] != word[i]) {
+                    match = false;
+                    break;
+                }
+                if (!guessed[i] && find(tried.begin(), tried.end(), w[i]) != tried.end()) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                for (char c : w)
+                    if (find(tried.begin(), tried.end(), c) == tried.end())
+                        freq[c]++;
+            }
         }
-    }
 
-    size_t guessIndex = 0;
-
-    while (lives > 0 && !won && guessIndex < guessPlan.size()) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) return 0;
-        }
-
-        // Lấy chữ chưa thử
-        char guess;
-        do {
-            if (guessIndex >= guessPlan.size()) break;
-            int wi = guessPlan[guessIndex].first;
-            int ci = guessPlan[guessIndex].second;
-            guess = wordList[wi][ci];
-            guessIndex++;
-        } while (find(tried.begin(), tried.end(), guess) != tried.end());
-
-        // Nếu đã hết kế hoạch đoán thì dừng
-        if (find(tried.begin(), tried.end(), guess) != tried.end())
-            break;
+        if (freq.empty()) break;
+        char guess = max_element(freq.begin(), freq.end(), [](auto& a, auto& b) {
+            return a.second < b.second;
+            })->first;
 
         bool correct = false;
         for (size_t i = 0; i < word.size(); ++i) {
-            if (word[i] == guess && !guessed[i]) {
+            if (word[i] == guess) {
                 guessed[i] = true;
                 correct = true;
             }
@@ -146,7 +154,6 @@ int main(int argc, char* argv[]) {
         renderText(renderer, font, triedStr, 50, 300, white);
 
         drawHangman(renderer, lives);
-
         SDL_RenderPresent(renderer);
         SDL_Delay(1000);
 
@@ -168,3 +175,4 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     return 0;
 }
+
