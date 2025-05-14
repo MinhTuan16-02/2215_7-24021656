@@ -4,8 +4,9 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <map>
 #include <ctime>
+#include <map>
+#include <sstream>
 
 using namespace std;
 
@@ -14,19 +15,29 @@ const int SCREEN_HEIGHT = 600;
 const int MAX_LIVES = 6;
 
 void renderText(SDL_Renderer* renderer, TTF_Font* font, const string& text, int x, int y, SDL_Color color) {
-    SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), color);
+    SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), color);
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_Rect dstRect = { x, y, surface->w, surface->h };
-    SDL_RenderCopy(renderer, texture, NULL, &dstRect);
+    SDL_Rect rect = { x, y, surface->w, surface->h };
+    SDL_RenderCopy(renderer, texture, NULL, &rect);
     SDL_FreeSurface(surface);
     SDL_DestroyTexture(texture);
 }
 
 void SDL_RenderDrawCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
-    for (int w = -radius; w <= radius; ++w)
-        for (int h = -radius; h <= radius; ++h)
-            if (w * w + h * h <= radius * radius)
-                SDL_RenderDrawPoint(renderer, cx + w, cy + h);
+    for (int w = 0; w < radius * 2; w++) {
+        for (int h = 0; h < radius * 2; h++) {
+            int dx = radius - w;
+            int dy = radius - h;
+            if ((dx * dx + dy * dy) <= (radius * radius)) {
+                SDL_RenderDrawPoint(renderer, cx + dx, cy + dy);
+            }
+        }
+    }
+}
+
+void drawBackground(SDL_Renderer* renderer) {
+    SDL_SetRenderDrawColor(renderer, 20, 20, 40, 255);
+    SDL_RenderClear(renderer);
 }
 
 void drawHangman(SDL_Renderer* renderer, int lives) {
@@ -44,55 +55,158 @@ void drawHangman(SDL_Renderer* renderer, int lives) {
     if (parts >= 6) SDL_RenderDrawLine(renderer, 680, 290, 710, 330);
 }
 
-void waitForKey(SDL_Renderer* renderer) {
+bool waitForKey(SDL_Renderer* renderer, bool& returnToMenu) {
     SDL_Event e;
     while (true) {
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) exit(0);
-            if (e.type == SDL_KEYDOWN) return;
+            if (e.type == SDL_QUIT) return false;
+            if (e.type == SDL_KEYDOWN) {
+                if (e.key.keysym.sym == SDLK_SPACE) {
+                    returnToMenu = true;
+                    return true;
+                }
+                return true;
+            }
         }
-        SDL_Delay(100);
+        SDL_Delay(10);
     }
 }
 
-int main(int argc, char* argv[]) {
-    SDL_Init(SDL_INIT_VIDEO);
-    TTF_Init();
-
-    SDL_Window* window = SDL_CreateWindow("Hangman - AI Guess", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
-
-    if (!font) {
-        cerr << "Khong mo duoc font arial.ttf\n";
-        return 1;
-    }
-
+void playerGuess(SDL_Renderer* renderer, TTF_Font* font, vector<string> wordList) {
     SDL_Color white = { 255, 255, 255 };
     SDL_Color green = { 0, 255, 0 };
     SDL_Color red = { 255, 0, 0 };
 
-    SDL_SetRenderDrawColor(renderer, 10, 10, 50, 255);
-    SDL_RenderClear(renderer);
-    renderText(renderer, font, "AI Hangman - Nhan phim de bat dau", 180, 180, white);
-    SDL_RenderPresent(renderer);
-    waitForKey(renderer);
-
-    vector<string> wordList = {
-        "apple", "brave", "chair", "dance", "eagle", "flame", "ghost", "horse", "ideal", "joker",
-        "knife", "laugh", "magic", "night", "ocean", "piano", "queen", "river", "smile", "table",
-        "under", "voice", "watch", "xylol", "youth", "zebra", "angel", "beach", "cloud", "dream",
-        "earth", "fairy", "giant", "heart", "index", "jewel", "koala", "lemon", "mango", "nurse",
-        "orbit", "peace", "quiet", "robot", "shark", "trust", "union", "vivid", "world", "yeast",
-        "zesty", "aroma", "blend", "crush", "drill", "enjoy", "frost", "glide", "haste", "input",
-        "jolly", "kneel", "lobby", "minor", "noble", "plant", "quest", "relay", "stone", "trick",
-        "unity", "visit", "widen", "xenon", "yield", "zoney", "adapt", "blink", "chant", "daisy",
-        "elite", "flush", "grime", "haunt", "icyed", "joint", "knead", "layer", "motto", "nifty",
-        "opine", "plank", "query", "rouge", "swell", "tonic", "unzip", "value", "wrack"
-    };
-
-    srand(time(0));
     string word = wordList[rand() % wordList.size()];
+    vector<bool> guessed(word.size(), false);
+    vector<char> tried;
+    int lives = MAX_LIVES;
+    bool usedHint = false;
+    bool won = false;
+
+    while (lives > 0 && !won) {
+        drawBackground(renderer);
+
+        renderText(renderer, font, "Doan chu cai (A-Z) hoac click vao o de xem chu (1 lan)", 50, 30, white);
+
+        vector<SDL_Rect> letterRects;
+        for (size_t i = 0; i < word.size(); ++i) {
+            string s = guessed[i] ? string(1, word[i]) : "_";
+            SDL_Color c = guessed[i] ? green : white;
+            SDL_Surface* surface = TTF_RenderText_Blended(font, s.c_str(), c);
+            SDL_Rect rect = { 50 + static_cast<int>(i) * 40, 100, surface->w, surface->h };
+            letterRects.push_back(rect);
+            renderText(renderer, font, s, rect.x, rect.y, c);
+            SDL_FreeSurface(surface);
+        }
+
+        renderText(renderer, font, "Mang con lai: " + to_string(lives), 50, 180, white);
+        string hintText = usedHint ? "Da dung goi y" : "Chua dung goi y";
+        renderText(renderer, font, hintText, 50, 210, usedHint ? red : green);
+
+        string triedStr = "Da doan: ";
+        for (char c : tried) triedStr += c;
+        renderText(renderer, font, triedStr, 50, 240, white);
+
+        drawHangman(renderer, lives);
+        SDL_RenderPresent(renderer);
+
+        SDL_Event e;
+        bool actionTaken = false;
+        while (!actionTaken) {
+            while (SDL_PollEvent(&e)) {
+                if (e.type == SDL_QUIT) return;
+                if (e.type == SDL_KEYDOWN) {
+                    char ch = toupper(e.key.keysym.sym);
+                    if (ch >= 'A' && ch <= 'Z') {
+                        ch = tolower(ch);
+                        if (find(tried.begin(), tried.end(), ch) == tried.end()) {
+                            tried.push_back(ch);
+                            bool found = false;
+                            for (size_t i = 0; i < word.size(); ++i) {
+                                if (word[i] == ch) {
+                                    guessed[i] = true;
+                                    found = true;
+                                }
+                            }
+                            if (!found) lives--;
+                            actionTaken = true;
+                        }
+                    }
+                }
+                if (!usedHint && e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                    int mx = e.button.x, my = e.button.y;
+                    for (size_t i = 0; i < letterRects.size(); ++i) {
+                        if (!guessed[i] && mx >= letterRects[i].x && mx <= letterRects[i].x + letterRects[i].w &&
+                            my >= letterRects[i].y && my <= letterRects[i].y + letterRects[i].h) {
+                            guessed[i] = true;
+                            usedHint = true;
+                            actionTaken = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            SDL_Delay(10);
+        }
+
+        won = all_of(guessed.begin(), guessed.end(), [](bool b) { return b; });
+    }
+
+    drawBackground(renderer);
+    string result = won ? "Chuc mung! Tu la: " + word : "That bai! Tu la: " + word;
+    renderText(renderer, font, result, 100, 250, won ? green : red);
+    renderText(renderer, font, "Nhan Space de ve menu...", 200, 320, white);
+    SDL_RenderPresent(renderer);
+
+    bool returnToMenu = false;
+    if (!waitForKey(renderer, returnToMenu) || !returnToMenu) return;
+    // Return to main menu by not exiting the function abruptly
+}
+
+void aiGuess(SDL_Renderer* renderer, TTF_Font* font, vector<string> wordList) {
+    SDL_Color white = { 255, 255, 255 };
+    SDL_Color green = { 0, 255, 0 };
+    SDL_Color red = { 255, 0, 0 };
+
+    drawBackground(renderer);
+    renderText(renderer, font, "Click vao tu de chon", 50, 30, white);
+
+    vector<SDL_Rect> wordRects;
+    int wordsPerRow = 10;
+    int wordHeight = 24;
+    for (size_t i = 0; i < wordList.size(); ++i) {
+        int row = i / wordsPerRow;
+        int col = i % wordsPerRow;
+        SDL_Surface* surface = TTF_RenderText_Blended(font, wordList[i].c_str(), white);
+        SDL_Rect rect = { 50 + col * 70, 70 + row * 30, surface->w, surface->h };
+        wordRects.push_back(rect);
+        renderText(renderer, font, wordList[i], rect.x, rect.y, white);
+        SDL_FreeSurface(surface);
+    }
+    SDL_RenderPresent(renderer);
+
+    string word;
+    bool chosen = false;
+    SDL_Event e;
+    while (!chosen) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) return;
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                int mx = e.button.x, my = e.button.y;
+                for (size_t i = 0; i < wordRects.size(); ++i) {
+                    if (mx >= wordRects[i].x && mx <= wordRects[i].x + wordRects[i].w &&
+                        my >= wordRects[i].y && my <= wordRects[i].y + wordRects[i].h) {
+                        word = wordList[i];
+                        chosen = true;
+                        break;
+                    }
+                }
+            }
+        }
+        SDL_Delay(10);
+    }
+
     vector<bool> guessed(word.size(), false);
     vector<char> tried;
     int lives = MAX_LIVES;
@@ -119,8 +233,8 @@ int main(int argc, char* argv[]) {
                         freq[c]++;
             }
         }
-
         if (freq.empty()) break;
+
         char guess = max_element(freq.begin(), freq.end(), [](auto& a, auto& b) {
             return a.second < b.second;
             })->first;
@@ -132,18 +246,15 @@ int main(int argc, char* argv[]) {
                 correct = true;
             }
         }
-
         if (!correct) lives--;
         tried.push_back(guess);
 
-        SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
-        SDL_RenderClear(renderer);
+        drawBackground(renderer);
 
-        int xStart = 50;
         for (size_t i = 0; i < word.size(); ++i) {
             string s = guessed[i] ? string(1, word[i]) : "_";
             SDL_Color c = guessed[i] ? green : white;
-            renderText(renderer, font, s, xStart + i * 40, 100, c);
+            renderText(renderer, font, s, 50 + i * 40, 100, c);
         }
 
         renderText(renderer, font, "Mang con lai: " + to_string(lives), 50, 180, white);
@@ -160,13 +271,70 @@ int main(int argc, char* argv[]) {
         won = all_of(guessed.begin(), guessed.end(), [](bool b) { return b; });
     }
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 30, 255);
-    SDL_RenderClear(renderer);
-    string result = won ? "May da doan dung tu: " + word : "May that bai! Tu la: " + word;
+    drawBackground(renderer);
+    string result = won ? "May doan dung! Tu la: " + word : "May that bai! Tu la: " + word;
     renderText(renderer, font, result, 100, 250, won ? green : red);
-    renderText(renderer, font, "Nhan phim bat ky de thoat...", 200, 320, white);
+    renderText(renderer, font, "Nhan Space de ve menu...", 200, 320, white);
     SDL_RenderPresent(renderer);
-    waitForKey(renderer);
+
+    bool returnToMenu = false;
+    if (!waitForKey(renderer, returnToMenu) || !returnToMenu) return;
+    // Return to main menu by not exiting the function abruptly
+}
+
+int main(int argc, char* argv[]) {
+    SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+    srand(time(0));
+
+    SDL_Window* window = SDL_CreateWindow("Hangman Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    TTF_Font* font = TTF_OpenFont("arial.ttf", 24);
+
+    if (!font) {
+        cout << "Khong mo duoc font!" << endl;
+        return 1;
+    }
+
+    vector<string> wordList = {
+        "apple", "brave", "chair", "dance", "eagle", "flame", "ghost", "horse", "ideal", "joker",
+        "knife", "laugh", "magic", "night", "ocean", "piano", "queen", "river", "smile", "table",
+        "under", "voice", "watch", "xylol", "youth", "zebra", "angel", "beach", "cloud", "dream",
+        "earth", "fairy", "giant", "heart", "index", "jewel", "koala", "lemon", "mango", "nurse",
+        "orbit", "quiet", "robot", "shark", "trust", "union", "vivid", "world", "yeast", "zesty",
+        "aroma", "blend", "crush", "drill", "enjoy", "frost", "glide", "haste", "input", "jolly",
+        "kneel", "lobby", "minor", "noble", "plant", "quest", "relay", "stone", "trick", "unity",
+        "visit", "widen", "xenon", "yield", "zoney", "adapt", "blink", "chant", "daisy", "elite",
+        "flush", "grime", "haunt", "icyed", "joint", "knead", "layer", "motto", "nifty", "opine",
+        "plank", "query", "rouge", "swell", "tonic", "unzip", "value", "wrack"
+    };
+
+    bool running = true;
+    while (running) {
+        drawBackground(renderer);
+        renderText(renderer, font, "Nhan 1: Nguoi doan (click o de xem chu)", 200, 200, { 255,255,255 });
+        renderText(renderer, font, "Nhan 2: May doan (click de chon tu)", 200, 250, { 255,255,255 });
+        SDL_RenderPresent(renderer);
+
+        SDL_Event e;
+        int mode = 0;
+        while (mode == 0 && running) {
+            while (SDL_PollEvent(&e)) {
+                if (e.type == SDL_QUIT) {
+                    running = false;
+                    break;
+                }
+                if (e.type == SDL_KEYDOWN) {
+                    if (e.key.keysym.sym == SDLK_1) mode = 1;
+                    else if (e.key.keysym.sym == SDLK_2) mode = 2;
+                }
+            }
+            SDL_Delay(10);
+        }
+
+        if (mode == 1) playerGuess(renderer, font, wordList);
+        else if (mode == 2) aiGuess(renderer, font, wordList);
+    }
 
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
@@ -175,4 +343,3 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     return 0;
 }
-
